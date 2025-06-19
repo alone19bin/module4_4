@@ -1,0 +1,394 @@
+@startuml Transaction Service - Расширенная логика
+
+' Стили и настройки
+skinparam sequence {
+    ArrowColor DarkBlue
+    ActorBorderColor DarkBlue
+    LifeLineBorderColor DarkBlue
+    ParticipantBorderColor DarkBlue
+    ParticipantBackgroundColor LightBlue
+    NoteBorderColor DarkGray
+    NoteBackgroundColor LightYellow
+    NoteTextColor Black
+}
+
+' Цветовая схема для разных типов операций
+skinparam ParticipantBackgroundColor<<Controller>> LightGreen
+skinparam ParticipantBackgroundColor<<Service>> LightBlue
+skinparam ParticipantBackgroundColor<<Repository>> LightYellow
+skinparam ParticipantBackgroundColor<<Converter>> LightCyan
+skinparam ParticipantBackgroundColor<<Handler>> LightPink
+
+' Участники процесса
+actor "Пользователь" as user
+participant "WalletController\n(Контроллер кошельков)" as controller <<Controller>>
+participant "WalletService\n(Сервис кошельков)" as service <<Service>>
+participant "WalletRepository\n(Репозиторий кошельков)" as repo <<Repository>>
+participant "WalletTypeRepository\n(Репозиторий типов кошельков)" as typeRepo <<Repository>>
+participant "TransactionRepository\n(Репозиторий транзакций)" as transRepo <<Repository>>
+participant "PaymentRequestRepository\n(Репозиторий платежных запросов)" as payRepo <<Repository>>
+participant "CurrencyConverter\n(Конвертер валют)" as converter <<Converter>>
+participant "GlobalExceptionHandler\n(Обработчик ошибок)" as exceptionHandler <<Handler>>
+database "База данных" as db
+
+' Легенда
+legend right
+    |= Тип |= Описание |
+    |<#LightGreen>| Контроллеры - обработка HTTP запросов |
+    |<#LightBlue>| Сервисы - бизнес-логика |
+    |<#LightYellow>| Репозитории - работа с данными |
+    |<#LightCyan>| Конвертеры - преобразование данных |
+    |<#LightPink>| Обработчики - обработка ошибок |
+endlegend
+
+' 1. Создание кошелька
+== Создание нового кошелька ==
+note over user,db #LightYellow
+  Бизнес-процесс:
+  1. Валидация входных данных
+  2. Проверка типа кошелька
+  3. Создание кошелька
+  4. Сохранение в БД
+end note
+
+user -> controller: POST /api/v1/wallets
+note right: WalletRequest: {userUid, name, currencyCode}
+activate controller
+
+controller -> controller: validateRequest(WalletRequest)
+note right
+  Проверка:
+  * Наличие обязательных полей
+  * Корректность формата данных
+  * Валидность валюты
+end note
+
+controller -> service: createWallet(WalletRequest)
+activate service
+
+service -> typeRepo: findByCurrencyCode(currencyCode)
+note right: Поиск типа кошелька по коду валюты
+activate typeRepo
+typeRepo -> db: SELECT * FROM wallet_types WHERE currency_code = :code
+db --> typeRepo: walletType
+typeRepo --> service: walletType
+deactivate typeRepo
+
+alt walletType == null
+    service -> exceptionHandler: throw ResourceNotFoundException
+    note right: Ошибка: Тип кошелька не найден
+    exceptionHandler --> user: 404 Not Found
+else walletType != null
+    service -> service: validateWalletType()
+    note right
+      Проверка:
+      * Активность типа кошелька
+      * Доступность для пользователя
+    end note
+
+    service -> service: createNewWallet()
+    note right
+      Создание кошелька:
+      * Генерация UUID
+      * Установка начального баланса
+      * Установка статуса ACTIVE
+      * Установка временных меток
+    end note
+
+    service -> repo: save(wallet)
+    note right: Сохранение кошелька в БД
+    activate repo
+    repo -> db: INSERT INTO wallets
+    db --> repo: savedWallet
+    repo --> service: savedWallet
+    deactivate repo
+
+    service --> controller: WalletResponse
+    deactivate service
+
+    controller --> user: 201 Created
+end
+deactivate controller
+
+' 2. Получение кошельков пользователя
+== Получение списка кошельков пользователя ==
+note over user,db #LightYellow
+  Бизнес-процесс:
+  1. Поиск кошельков пользователя
+  2. Преобразование в DTO
+  3. Возврат списка
+end note
+
+user -> controller: GET /api/v1/wallets?userUid={userUid}
+note right: Запрос на получение кошельков пользователя
+activate controller
+
+controller -> service: getWalletsByUserUid(userUid)
+activate service
+
+service -> repo: findByUserUid(userUid)
+note right: Поиск кошельков по ID пользователя
+activate repo
+repo -> db: SELECT * FROM wallets WHERE user_uid = :userUid
+db --> repo: wallets
+repo --> service: wallets
+deactivate repo
+
+service -> service: mapToWalletResponse()
+note right
+  Преобразование в DTO:
+  * Маппинг основных полей
+  * Добавление информации о валюте
+  * Форматирование баланса
+end note
+
+service --> controller: List<WalletResponse>
+deactivate service
+
+controller --> user: 200 OK
+deactivate controller
+
+' 3. Создание транзакции
+== Создание новой транзакции ==
+note over user,db #LightYellow
+  Бизнес-процесс:
+  1. Валидация входных данных
+  2. Проверка кошельков
+  3. Создание платежного запроса
+  4. Обработка транзакции
+  5. Обновление балансов
+end note
+
+user -> controller: POST /api/v1/transactions
+note right: CreateTransactionRequest: {userUid, walletUid, amount, type}
+activate controller
+
+controller -> controller: validateRequest(CreateTransactionRequest)
+note right
+  Валидация:
+  * Наличие обязательных полей
+  * Корректность суммы
+  * Валидность типа транзакции
+end note
+
+controller -> service: createTransaction(CreateTransactionRequest)
+activate service
+
+' 3.1 Проверка кошелька
+service -> repo: findById(walletUid)
+note right: Поиск кошелька по ID
+activate repo
+repo -> db: SELECT * FROM wallets WHERE uid = :walletUid
+db --> repo: wallet
+repo --> service: wallet
+deactivate repo
+
+alt wallet == null
+    service -> exceptionHandler: throw ResourceNotFoundException
+    note right: Ошибка: Кошелек не найден
+    exceptionHandler --> user: 404 Not Found
+else wallet != null
+    service -> service: validateWallet()
+    note right
+      Проверка:
+      * Статус кошелька (ACTIVE)
+      * Принадлежность пользователю
+      * Достаточность средств
+    end note
+
+    ' 3.2 Создание платежного запроса
+    service -> service: createPaymentRequest()
+    note right
+      Создание запроса:
+      * Генерация UUID
+      * Установка статуса PENDING
+      * Установка временных меток
+    end note
+
+    service -> payRepo: save(paymentRequest)
+    note right: Сохранение запроса в БД
+    activate payRepo
+    payRepo -> db: INSERT INTO payment_requests
+    db --> payRepo: savedPaymentRequest
+    payRepo --> service: savedPaymentRequest
+    deactivate payRepo
+
+    ' 3.3 Обработка разных типов транзакций
+    alt Тип транзакции == "TRANSFER"
+        note right
+          Процесс перевода:
+          1. Поиск целевого кошелька
+          2. Конвертация валют
+          3. Расчет комиссии
+          4. Создание транзакций
+        end note
+        service -> repo: findById(destinationWalletUid)
+        note right: Поиск целевого кошелька
+        activate repo
+        repo -> db: SELECT * FROM wallets WHERE uid = :destUid
+        db --> repo: destWallet
+        repo --> service: destWallet
+        deactivate repo
+
+        alt destWallet == null
+            service -> exceptionHandler: throw ResourceNotFoundException
+            note right: Ошибка: Целевой кошелек не найден
+            exceptionHandler --> user: 404 Not Found
+        else destWallet != null
+            service -> service: validateDestinationWallet()
+            note right
+              Проверка:
+              * Статус целевого кошелька
+              * Разные валюты
+              * Разные пользователи
+            end note
+
+            service -> converter: convert(amount, fromCurrency, toCurrency)
+            note right: Конвертация валют по курсу
+            activate converter
+            converter --> service: convertedAmount
+            deactivate converter
+
+            service -> service: calculateCommission()
+            note right
+              Расчет комиссии:
+              * Базовая ставка 1%
+              * Минимальная комиссия
+              * Округление
+            end note
+
+            service -> service: validateBalance()
+            note right
+              Проверка баланса:
+              * Достаточность средств
+              * Учет комиссии
+              * Минимальный остаток
+            end note
+
+            service -> service: createTransferTransactions()
+            note right
+              Создание транзакций:
+              * Списание с исходного кошелька
+              * Зачисление на целевой кошелек
+              * Учет комиссии
+            end note
+        end
+
+    else Тип транзакции == "TOPUP"
+        note right
+          Процесс пополнения:
+          1. Создание транзакции
+          2. Обновление баланса
+        end note
+        service -> service: createTopupTransaction()
+        note right
+          Создание транзакции:
+          * Генерация UUID
+          * Установка типа TOPUP
+          * Установка статуса PENDING
+        end note
+
+    else Тип транзакции == "WITHDRAWAL"
+        note right
+          Процесс снятия:
+          1. Проверка баланса
+          2. Создание транзакции
+          3. Обновление баланса
+        end note
+        service -> service: validateBalance()
+        note right
+          Проверка:
+          * Достаточность средств
+          * Минимальный остаток
+        end note
+
+        service -> service: createWithdrawalTransaction()
+        note right
+          Создание транзакции:
+          * Генерация UUID
+          * Установка типа WITHDRAWAL
+          * Установка статуса PENDING
+        end note
+    end
+
+    ' 3.4 Сохранение транзакций
+    service -> transRepo: saveAll(transactions)
+    note right: Сохранение транзакций в БД
+    activate transRepo
+    transRepo -> db: INSERT INTO transactions
+    db --> transRepo: savedTransactions
+    transRepo --> service: savedTransactions
+    deactivate transRepo
+
+    ' 3.5 Обновление балансов
+    service -> repo: saveAll(wallets)
+    note right: Обновление балансов кошельков
+    activate repo
+    repo -> db: UPDATE wallets SET balance = :balance
+    db --> repo: updatedWallets
+    repo --> service: updatedWallets
+    deactivate repo
+
+    service --> controller: List<TransactionResponse>
+    deactivate service
+
+    controller --> user: 201 Created
+end
+deactivate controller
+
+' 4. Поиск транзакций
+== Поиск транзакций ==
+note over user,db #LightYellow
+  Бизнес-процесс:
+  1. Валидация параметров поиска
+  2. Поиск транзакций
+  3. Преобразование в DTO
+  4. Возврат результатов
+end note
+
+user -> controller: GET /api/v1/transactions
+note right
+  Параметры поиска:
+  * userUid (опционально)
+  * walletUid (опционально)
+  * type (опционально)
+  * state (опционально)
+  * dateFrom (опционально)
+  * dateTo (опционально)
+end note
+activate controller
+
+controller -> service: searchTransactions(criteria)
+activate service
+
+service -> service: validateSearchCriteria()
+note right
+  Валидация:
+  * Корректность дат
+  * Валидность типов
+  * Валидность статусов
+end note
+
+service -> transRepo: findByCriteria(criteria)
+note right: Поиск транзакций по критериям
+activate transRepo
+transRepo -> db: SELECT * FROM transactions WHERE criteria
+db --> transRepo: transactions
+transRepo --> service: transactions
+deactivate transRepo
+
+service -> service: mapToTransactionResponse()
+note right
+  Преобразование в DTO:
+  * Маппинг основных полей
+  * Форматирование сумм
+  * Добавление метаданных
+end note
+
+service --> controller: List<TransactionResponse>
+deactivate service
+
+controller --> user: 200 OK
+deactivate controller
+
+@enduml

@@ -1,0 +1,97 @@
+schemaName: transaction_service_db
+
+dataSources:
+  ds0:
+    url: jdbc:postgresql://localhost:5432/transaction_service_db1
+    username: postgres
+    password: admin
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 1
+  ds1:
+    url: jdbc:postgresql://localhost:5432/transaction_service_db2
+    username: postgres
+    password: admin
+    connectionTimeoutMilliseconds: 30000
+    idleTimeoutMilliseconds: 60000
+    maxLifetimeMilliseconds: 1800000
+    maxPoolSize: 50
+    minPoolSize: 1
+
+rules:
+- !SHARDING
+  tables:
+    wallet_types:
+      actualDataNodes: ds${0..1}.wallet_types
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: wallet_types_inline
+    wallets:
+      actualDataNodes: ds${0..1}.wallets
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: wallets_inline
+    payment_requests:
+      actualDataNodes: ds${0..1}.payment_requests
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: payment_requests_inline
+    transactions:
+      actualDataNodes: ds${0..1}.transactions
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: transactions_inline
+    top_up_requests:
+      actualDataNodes: ds${0..1}.top_up_requests
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: top_up_requests_inline
+    withdrawal_requests:
+      actualDataNodes: ds${0..1}.withdrawal_requests
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: withdrawal_requests_inline
+    transfer_requests:
+      actualDataNodes: ds${0..1}.transfer_requests
+      tableStrategy:
+        standard:
+          shardingColumn: uid
+          shardingAlgorithmName: transfer_requests_inline
+
+  shardingAlgorithms:
+    wallet_types_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    wallets_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    payment_requests_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    transactions_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    top_up_requests_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    withdrawal_requests_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2}
+    transfer_requests_inline:
+      type: INLINE
+      props:
+        algorithm-expression: ds${uid.hashCode() % 2} 
