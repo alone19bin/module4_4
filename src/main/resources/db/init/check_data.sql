@@ -27,3 +27,7 @@ SELECT uid, user_uid, amount, type, state FROM transactions;
 SELECT * FROM wallet_types;
 SELECT * FROM wallets;
 SELECT * FROM payment_requests;
+
+
+
+SELECT * FROM transactions WHERE uid = 'c0661225-906d-46f7-b0f2-c6e830437830';

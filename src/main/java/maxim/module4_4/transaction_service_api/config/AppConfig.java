@@ -11,30 +11,17 @@ import java.util.Arrays;
 import java.util.Collections;
 
 /**
- Цели:
-
- * 1. Настройка бинов Spring
+ * 1.  Настройка бинов Spring
  * 2. Конфигурация внешних зависимостей
  * 3. Предоставление общих компонентов для всего приложения
   Особенности:
 
- * - RestTemplate для работы с внешними API
- * - Централизованная конфигурация HTTP-клиента
- * - Возможность добавления дополнительных настроек
- * Логика работы:
- *
- * 1. RestTemplate используется для:
- *    - Конвертации валют через внешний API
- *    - Проверки статуса транзакций
- *    - Взаимодействия с другими сервисами
- * 2. Бин создается один раз при старте приложения
- * 3. Может быть переиспользован в разных частях приложения
  */
 @Configuration
 public class AppConfig {
     @Bean
     public RestTemplate restTemplate() {
-        // Настраиваем фабрику с таймаутами
+        // таймаутамЫ
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);  // 5секунд на подключение
         factory.setReadTimeout(5000);     //5 секунд на чтение

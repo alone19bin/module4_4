@@ -1,24 +1,28 @@
 spring:
+  application:
+    name: transaction-service
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:sharding.yml
   jpa:
-    hibernate:
-      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-  flyway:
-    enabled: true
-    baseline-on-migrate: true
-    locations: classpath:db/migration
-    url: jdbc:postgresql://localhost:5432/transaction_db_0
-    user: postgres
-    password: postgres
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        hbm2ddl:
+          auto: none
+
+async:
+  core-pool-size: 10
+  max-pool-size: 20
+  queue-capacity: 100
 
 server:
-  port: 8080
+  port: 8081
 
 logging:
   level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: TRACE
+    com.example.transactionservice.transactional.CompensatingTransactionAspect: DEBUG
